@@ -11,5 +11,6 @@
 # ProMis
 from promis.logic.spatial.distance import Distance
 from promis.logic.spatial.over import Over
+from promis.logic.spatial.between import Between
 
 __all__ = ["Distance", "Over"]
