@@ -21,9 +21,9 @@ from overpy.exception import OverpassGatewayTimeout, OverpassTooManyRequests
 from promis.geo import CartesianMap, LocationType, PolarLocation, RasterBand
 from promis.loaders import OsmLoader
 from promis.logic import Solver
-from promis.logic.spatial import Distance, Over
+from promis.logic.spatial import Distance, Over, EastDistance
 
-
+# CHANGE: add eastdistance to load and solve
 class ProMis:
 
     """The ProMis engine to create Probabilistic Mission Landscapes."""
@@ -69,6 +69,7 @@ class ProMis:
         # Setup distance and over relations
         self.distances = dict()
         self.overs = dict()
+        self.distances_east = dict()
 
     def compute_distributions(self, covariance: ndarray, cache: str = ""):
         """Compute distributional clauses.
@@ -99,10 +100,13 @@ class ProMis:
                 with open(f"{cache}/over_{extension}.pkl", "rb") as pkl_file:
                     over = load(pkl_file)
                     self.overs[location_type] = over
+                with open(f"{cache}/distance_east_{extension}.pkl", "rb") as pkl_file:
+                    distance_east = load(pkl_file)
+                    self.distances_east[location_type] = distance_east
             # Else recompute and store results
             except FileNotFoundError:
                 # Work on both spatial relations in parallel
-                with Pool(2) as pool:
+                with Pool(3) as pool:
                     distance = pool.apply_async(
                         Distance.from_map,
                         (self.map, location_type, self.resolution, self.number_of_random_maps),
@@ -111,10 +115,15 @@ class ProMis:
                         Over.from_map,
                         (self.map, location_type, self.resolution, self.number_of_random_maps),
                     )
+                    distance_east = pool.apply_async(
+                        EastDistance.from_map,
+                        (self.map, location_type, self.resolution, self.number_of_random_maps),
+                    )
 
                     # Append results to dictionaries
                     distance_result = distance.get()
                     over_result = over.get()
+                    distance_east_result = distance_east.get()
 
                 # Export as pkl
                 if distance_result is not None:
@@ -125,6 +134,11 @@ class ProMis:
                     self.overs[location_type] = over_result
                     with open(f"{cache}/over_{extension}.pkl", "wb") as file:
                         Pickler(file).dump(self.overs[location_type])
+                if distance_east_result is not None:
+                    self.distances_east[location_type] = distance_east_result
+                    with open(f"{cache}/distance_east_{extension}.pkl", "wb") as file:
+                        Pickler(file).dump(self.distances_east[location_type])
+
 
     def add_feature(self, feature):
         self.map.features.append(feature)
@@ -153,5 +167,7 @@ class ProMis:
             solver.add_distance(distance)
         for over in self.overs.values():
             solver.add_over(over)
+        for distance_east in self.distances_east.values():
+            solver.add_distance_east(distance_east)
 
         return solver.solve(n_jobs, batch_size)

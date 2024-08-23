@@ -15,7 +15,7 @@ from itertools import product
 # Third Party
 import matplotlib.pyplot as plt
 from matplotlib.transforms import Bbox
-from numpy import array, sum, uint8, vstack, zeros
+from numpy import array, sum, uint8, vstack, zeros, unravel_index
 from PIL import Image
 from sklearn.preprocessing import MinMaxScaler
 
@@ -63,6 +63,14 @@ class RasterBand:
             index: self.index_to_polar(index)
             for index in product(range(self.data.shape[0]), range(self.data.shape[1]))
         }
+
+    # CHANGE: add raster * raster
+    def __mul__(self, other: "RasterBand") -> "RasterBand":
+        result = RasterBand(self.data.shape, self.origin, self.width, self.height)
+        for i, _ in enumerate(result.cartesian_locations.values()):
+            index = unravel_index(i, result.data.shape)
+            result.data[index] = self.data[index] * other.data[index]
+        return result
 
     @classmethod
     def from_map(

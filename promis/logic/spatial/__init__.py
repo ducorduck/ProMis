@@ -9,8 +9,11 @@
 #
 
 # ProMis
+# CHANGE: add East and NorthDistance
 from promis.logic.spatial.distance import Distance
 from promis.logic.spatial.over import Over
 from promis.logic.spatial.between import Between
+from promis.logic.spatial.east_distance import EastDistance
+from promis.logic.spatial.north_distance import NorthDistance
 
-__all__ = ["Distance", "Over"]
+__all__ = ["Distance", "Over", "Between", "EastDistance", "NorthDistance"]

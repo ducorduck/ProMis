@@ -22,9 +22,9 @@ from problog.tasks.dcproblog.solver import InferenceSolver
 
 # ProMis
 from promis.geo import PolarLocation, RasterBand
-from promis.logic.spatial import Distance, Over
+from promis.logic.spatial import Distance, Over, EastDistance
 
-
+# CHANGE: add east distance to solver
 class Solver:
 
     """A solver for HPLP based ProMis."""
@@ -53,10 +53,14 @@ class Solver:
 
         # Collections for parameters
         self.distances = []
+        self.distances_east = []
         self.overs = []
 
     def add_distance(self, distance: Distance):
         self.distances.append(distance)
+
+    def add_distance_east(self, distance_east: EastDistance):
+        self.distances.append(distance_east)
 
     def add_over(self, over: Over):
         self.overs.append(over)
@@ -96,6 +100,8 @@ class Solver:
                     parameters += distance.index_to_distributional_clause(index)
                 for over in self.overs:
                     parameters += over.index_to_distributional_clause(index)
+                for distance_east in self.distances_east:
+                    parameters += distance_east.index_to_distributional_clause(index)
 
             # Add program and drop indices that are being worked on
             programs.append(self.knowledge_base + "\n" + queries + "\n" + parameters)

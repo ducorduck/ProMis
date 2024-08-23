@@ -75,18 +75,21 @@ class Map(ABC):
 
         For more information on GeoJSON, see :func:`promis.geo.geospatial.Geospatial.to_geo_json`.
         """
-
+        # CHANGE: change to add name properties in geojson
+        to_add_feature = []
+        for feature in self.features:
+            if not (location_type is None or feature.location_type == location_type):
+                continue
+            properties = {"name": feature.name}
+            add_feature = Feature(
+                geometry=feature,
+                id=feature.identifier,
+                properties=properties,
+            )
+            to_add_feature.append(add_feature)
         return dumps(
             FeatureCollection(
-                [
-                    Feature(
-                        geometry=feature,
-                        id=feature.identifier,
-                        properties=LOCATION_STYLES[feature.location_type],
-                    )
-                    for feature in self.features
-                    if location_type is None or feature.location_type == location_type
-                ],
+                to_add_feature,
                 indent=indent,
                 **kwargs,
             )

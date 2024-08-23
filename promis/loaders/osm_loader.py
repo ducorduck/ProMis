@@ -12,6 +12,7 @@
 
 # Third Party
 from overpy import Overpass, Relation
+from shapely import line_merge, MultiLineString
 
 # ProMis
 from promis.geo import LocationType, PolarLocation, PolarMap, PolarPolygon, PolarRoute
@@ -94,8 +95,9 @@ class OsmLoader(SpatialLoader):
             **kwargs,
         )
 
+    # CHANGE: merge feature with the same name tag
     def load_routes(
-        self, tag: str, bounding_box: str, location_type: LocationType
+        self, tag: str, bounding_box: str, location_type: LocationType, merge_road: bool = True
     ) -> list[PolarRoute]:
         """Loads all selected ways from OSM as PolarRoute.
 
@@ -108,6 +110,7 @@ class OsmLoader(SpatialLoader):
         Returns:
             A list of all found map features as PolarRoutes
         """
+        routes = []
 
         # Load data via Overpass
         result = self.overpass_api.query(
@@ -117,18 +120,76 @@ class OsmLoader(SpatialLoader):
                 out geom{bounding_box};>;out;
             """
         )
+        if not merge_road:
+            return [
+                PolarRoute(
+                    [
+                        PolarLocation(latitude=float(node.lat), longitude=float(node.lon))
+                        for node in way.nodes
+                    ],
+                    location_type=location_type,
+                )
+                for way in result.ways
+            ]
+        
+        name_to_list_ways = {}
+        unnamed_ways = []
+        for way in result.ways:
+            if 'name' not in way.tags:
+                unnamed_ways.append(way)
+                continue
+            if not way.tags['name'] in name_to_list_ways:
+                name_to_list_ways[way.tags['name']] = [way]
+            else:
+                name_to_list_ways[way.tags['name']].append(way)
 
-        # Construct and return list of PolarRoutes
-        return [
-            PolarRoute(
+        # trying to merge ways with same name
+        for name, ways in name_to_list_ways.items():
+            multi_line_string = []
+            for way in ways:
+                line_string = []
+                for node in way.nodes:
+                    lat = float(node.lat)
+                    lon = float(node.lon)
+                    line_string.append((lat, lon))
+                multi_line_string.append(line_string)
+            road = line_merge(MultiLineString(multi_line_string))
+            if isinstance(road, MultiLineString):
+                for lineString in road.geoms:
+                    route = PolarRoute(
+                        [
+                            PolarLocation(latitude=point[0], longitude=point[1])
+                            for point in lineString.coords
+                        ],
+                        location_type=location_type,
+                        name=name
+                    )
+                    routes.append(route)
+                continue
+
+            route = PolarRoute(
+                [
+                    PolarLocation(latitude=node[0], longitude=node[1])
+                    for node in road.coords
+                ],
+                location_type=location_type,
+                name=name
+            )
+            routes.append(route)
+
+        # add route for unnamed ways
+        for way in unnamed_ways:
+            route = PolarRoute(
                 [
                     PolarLocation(latitude=float(node.lat), longitude=float(node.lon))
                     for node in way.nodes
                 ],
-                location_type=location_type,
+                location_type=location_type
             )
-            for way in result.ways
-        ]
+            routes.append(route)
+            
+        # Construct and return list of PolarRoutes
+        return routes
 
     def load_polygons(
         self,
