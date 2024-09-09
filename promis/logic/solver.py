@@ -22,7 +22,7 @@ from problog.tasks.dcproblog.solver import InferenceSolver
 
 # ProMis
 from promis.geo import PolarLocation, RasterBand
-from promis.logic.spatial import Distance, Over, EastDistance
+from promis.logic.spatial import Distance, Over, EastDistance, NorthDistance, Between
 
 # CHANGE: add east distance to solver
 class Solver:
@@ -54,16 +54,24 @@ class Solver:
         # Collections for parameters
         self.distances = []
         self.distances_east = []
+        self.distances_north = []
         self.overs = []
+        self.between = []
 
     def add_distance(self, distance: Distance):
         self.distances.append(distance)
 
     def add_distance_east(self, distance_east: EastDistance):
-        self.distances.append(distance_east)
+        self.distances_east.append(distance_east)
+
+    def add_distance_north(self, distance_north: NorthDistance):
+        self.distances_north.append(distance_north)
 
     def add_over(self, over: Over):
         self.overs.append(over)
+
+    def add_between(self, between: Between):
+        self.between.append(between)
 
     def solve(self, n_jobs: int = 1, batch_size: int = 1) -> tuple[RasterBand, float, float, float]:
         """Solve the given ProMis problem.
@@ -102,6 +110,10 @@ class Solver:
                     parameters += over.index_to_distributional_clause(index)
                 for distance_east in self.distances_east:
                     parameters += distance_east.index_to_distributional_clause(index)
+                for distance_north in self.distances_north:
+                    parameters += distance_north.index_to_distributional_clause(index)
+                for between in self.between:
+                    parameters += between.index_to_distributional_clause(index)
 
             # Add program and drop indices that are being worked on
             programs.append(self.knowledge_base + "\n" + queries + "\n" + parameters)

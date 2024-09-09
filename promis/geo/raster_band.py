@@ -71,6 +71,13 @@ class RasterBand:
             index = unravel_index(i, result.data.shape)
             result.data[index] = self.data[index] * other.data[index]
         return result
+    
+    def __add__(self, other: "RasterBand") -> "RasterBand":
+        result = RasterBand(self.data.shape, self.origin, self.width, self.height)
+        for i, _ in enumerate(result.cartesian_locations.values()):
+            index = unravel_index(i, result.data.shape)
+            result.data[index] = 1 - (1 - self.data[index]) * (1 - other.data[index])
+        return result
 
     @classmethod
     def from_map(

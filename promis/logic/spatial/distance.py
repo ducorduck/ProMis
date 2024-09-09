@@ -14,22 +14,23 @@ from pathlib import Path
 
 # Third Party
 from numpy import array, clip, mean, unravel_index, var, vectorize
-from scipy.stats import multivariate_normal
+from scipy.stats import multivariate_normal, foldnorm
 from shapely.strtree import STRtree
 
 # ProMis
 from promis.geo import CartesianLocation, CartesianMap, LocationType, PolarMap, RasterBand
-from promis.models import Gaussian
+from promis.models import Gaussian, DistributionType
 
 
 class Distance:
 
     """TODO"""
 
-    def __init__(self, mean: RasterBand, variance: RasterBand, location_type: LocationType) -> None:
+    def __init__(self, mean: RasterBand, variance: RasterBand, distribution_type: RasterBand, location_type: LocationType) -> None:
         # Setup attributes
         self.mean = mean
         self.variance = variance
+        self.distribution_type = distribution_type
         self.location_type = location_type
 
         # TODO: Find better treatment of zero variance
@@ -41,9 +42,15 @@ class Distance:
         )
 
         for x, y in product(range(self.mean.data.shape[0]), range(self.mean.data.shape[1])):
-            probabilities.data[x, y] = Gaussian(self.mean.data[x, y].reshape((1, 1)), self.variance.data[x, y].reshape((1, 1))).cdf(array([value]))
+            if self.distribution_type.data[x, y] == DistributionType.NORMAL.value:
+                probabilities.data[x, y] = Gaussian(self.mean.data[x, y].reshape((1, 1)), self.variance.data[x, y].reshape((1, 1))).cdf(array([value]))
+            elif self.distribution_type.data[x, y] == DistributionType.FOLDED_NORMAL.value:
+                std_div = self.variance.data[x, y]**0.5
+                c = self.mean.data[x, y] / std_div
+                probabilities.data[x, y] = foldnorm.cdf(value, c, 0, std_div)
 
         return probabilities
+
 
     def __gt__(self, value: float) -> RasterBand:
         probabilities = self < value
@@ -83,8 +90,11 @@ class Distance:
     def index_to_distributional_clause(self, index: tuple[int, int]) -> str:
         # Build code
         feature_name = self.location_type.name.lower()
+        distribution_type = "normal"
+        if self.distribution_type.data[index] == DistributionType.FOLDED_NORMAL.value:
+            distribution_type = "foldedNorm"
         relation = f"distance(row_{index[1]}, column_{index[0]}, {feature_name})"
-        distribution = f"normal({self.mean.data[index]}, {self.variance.data[index]})"
+        distribution = f"{distribution_type}({self.mean.data[index]}, {self.variance.data[index]})"
 
         return f"{relation} ~ {distribution}.\n"
 
@@ -131,13 +141,17 @@ class Distance:
             resolution, cartesian_map.origin, cartesian_map.width, cartesian_map.height
         )
 
+        distribution_type = RasterBand(
+            resolution, cartesian_map.origin, cartesian_map.width, cartesian_map.height
+        )
+
         # Compute parameters of normal distributions for each location
         for i, location in enumerate(mean.cartesian_locations.values()):
             index = unravel_index(i, mean.data.shape)
-            mean.data[index], variance.data[index] = cls.extract_parameters(location, str_trees)
+            mean.data[index], variance.data[index], distribution_type.data[index] = cls.extract_parameters(location, str_trees)
 
         # Create and return Distance object
-        return cls(mean, variance, location_type)
+        return cls(mean, variance, distribution_type, location_type)
 
     @staticmethod
     def extract_parameters(location: CartesianLocation, str_trees: list[STRtree]) -> float:
@@ -153,11 +167,18 @@ class Distance:
         """
 
         distances = []
+        distribution_type = DistributionType.NORMAL
         for str_tree in str_trees:
             distances.append(
                 location.geometry.distance(
                     str_tree.geometries.take(str_tree.nearest(location.geometry))
                 )
             )
+        data_mean = mean(distances)
+        data_var = var(distances)
+        data_std_div = data_var**0.5
 
-        return mean(distances), var(distances)
+        if (data_mean - 3 * data_std_div) < 0:
+            distribution_type = DistributionType.FOLDED_NORMAL
+
+        return mean(distances), var(distances), distribution_type.value

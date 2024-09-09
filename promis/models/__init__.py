@@ -11,5 +11,7 @@
 # ProMis
 from promis.models.gaussian import Gaussian
 from promis.models.gaussian_mixture import GaussianMixture
+from promis.models.folded_normal import FoldedNormal
+from promis.models.distribution_type import DistributionType
 
-__all__ = ["Gaussian", "GaussianMixture"]
+__all__ = ["Gaussian", "GaussianMixture", "FoldedNormal", "DistributionType"]

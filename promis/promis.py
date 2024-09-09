@@ -21,7 +21,7 @@ from overpy.exception import OverpassGatewayTimeout, OverpassTooManyRequests
 from promis.geo import CartesianMap, LocationType, PolarLocation, RasterBand
 from promis.loaders import OsmLoader
 from promis.logic import Solver
-from promis.logic.spatial import Distance, Over, EastDistance
+from promis.logic.spatial import Distance, Over, EastDistance, NorthDistance, Between
 
 # CHANGE: add eastdistance to load and solve
 class ProMis:
@@ -70,6 +70,8 @@ class ProMis:
         self.distances = dict()
         self.overs = dict()
         self.distances_east = dict()
+        self.distances_north = dict()
+        self.between = dict()
 
     def compute_distributions(self, covariance: ndarray, cache: str = ""):
         """Compute distributional clauses.
@@ -103,10 +105,16 @@ class ProMis:
                 with open(f"{cache}/distance_east_{extension}.pkl", "rb") as pkl_file:
                     distance_east = load(pkl_file)
                     self.distances_east[location_type] = distance_east
+                with open(f"{cache}/distance_north_{extension}.pkl", "rb") as pkl_file:
+                    distance_north = load(pkl_file)
+                    self.distances_north[location_type] = distance_north
+                with open(f"{cache}/between_{extension}.pkl", "rb") as pkl_file:
+                    between = load(pkl_file)
+                    self.between[location_type] = between
             # Else recompute and store results
             except FileNotFoundError:
                 # Work on both spatial relations in parallel
-                with Pool(3) as pool:
+                with Pool(4) as pool:
                     distance = pool.apply_async(
                         Distance.from_map,
                         (self.map, location_type, self.resolution, self.number_of_random_maps),
@@ -119,11 +127,21 @@ class ProMis:
                         EastDistance.from_map,
                         (self.map, location_type, self.resolution, self.number_of_random_maps),
                     )
+                    distance_north = pool.apply_async(
+                        NorthDistance.from_map,
+                        (self.map, location_type, self.resolution, self.number_of_random_maps),
+                    )
+                    between = pool.apply_async(
+                        Between.from_map,
+                        (self.map, location_type, self.resolution, self.number_of_random_maps),
+                    )
 
                     # Append results to dictionaries
                     distance_result = distance.get()
                     over_result = over.get()
                     distance_east_result = distance_east.get()
+                    distance_north_result = distance_north.get()
+                    between_result = between.get()
 
                 # Export as pkl
                 if distance_result is not None:
@@ -138,6 +156,14 @@ class ProMis:
                     self.distances_east[location_type] = distance_east_result
                     with open(f"{cache}/distance_east_{extension}.pkl", "wb") as file:
                         Pickler(file).dump(self.distances_east[location_type])
+                if distance_north_result is not None:
+                    self.distances_north[location_type] = distance_north_result
+                    with open(f"{cache}/distance_north_{extension}.pkl", "wb") as file:
+                        Pickler(file).dump(self.distances_north[location_type])
+                if between_result is not None:
+                    self.between[location_type] = between_result
+                    with open(f"{cache}/between_{extension}.pkl", "wb") as file:
+                        Pickler(file).dump(self.between[location_type])
 
 
     def add_feature(self, feature):
@@ -169,5 +195,9 @@ class ProMis:
             solver.add_over(over)
         for distance_east in self.distances_east.values():
             solver.add_distance_east(distance_east)
+        for distance_north in self.distances_north.values():
+            solver.add_distance_north(distance_north)
+        for between in self.between.values():
+            solver.add_between(between)
 
         return solver.solve(n_jobs, batch_size)

@@ -137,7 +137,7 @@ class Over:
         occupancies = []
         for str_tree in str_trees:
             occupancies.append(
-                location.geometry.within(
+                location.geometry.covered_by(
                     str_tree.geometries.take(str_tree.nearest(location.geometry))
                 )
             )

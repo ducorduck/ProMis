@@ -52,7 +52,7 @@ class Between:
     def index_to_distributional_clause(self, index: tuple[int, int]) -> str:
         feature_name = self.location_type.name.lower()
 
-        relation = f"between(row_{index[1]}, column_{index[0]}, {feature_name}).\n"
+        relation = f"betweenCustom(row_{index[1]}, column_{index[0]}, {feature_name}).\n"
 
         if self.probability.data[index] == 1.0:
             return relation
